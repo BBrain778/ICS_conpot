@@ -1,84 +1,92 @@
-import subprocess
-import time
-import os
-import google.generativeai as genai
+#!/bin/bash
+# 初始化設定
+LOG_FILE="/var/log/conpot_activation.log"  # 存放腳本運行的日誌
+USED_NAMES_FILE="/tmp/conpot_used_names.txt"  # 存放已啟動的 Conpot 容器名稱
+BACKUP_DIR="/var/log/conpot_backups"  # 備份 Conpot 數據的目錄
 
-# 設定 Gemini API 金鑰
-YOUR_GEMINI_API_KEY = "AIzaSyAshksCo_qA3azg_HBnE"
-genai.configure(api_key=YOUR_GEMINI_API_KEY)
+# 初始化檔案和目錄
+sudo rm -f "$USED_NAMES_FILE"
+touch "$USED_NAMES_FILE"
+chmod 666 "$USED_NAMES_FILE"
+mkdir -p "$BACKUP_DIR"
 
-def capture_traffic(interface, duration, output_pcap):
-    """使用 Wireshark 監控網路流量並儲存為 pcap 檔案。"""
-    try:
-        subprocess.run(["tshark", "-i", interface, "-a", f"duration:{duration}", "-w", output_pcap], check=True)
-        print(f"流量監控完成，檔案儲存於：{output_pcap}")
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"流量監控失敗：{e}")
-        return False
+# 清空 PREROUTING 鏈中的規則
+sudo iptables -t nat -F PREROUTING
 
-def pcap_to_text(pcap_file, text_file):
-    """將 pcap 檔案轉換為純文字檔案。"""
-    try:
-        with open(text_file, 'w') as f:
-            subprocess.run([
-                "tshark", "-r", pcap_file, "-T", "fields", 
-                "-e", "frame.number", 
-                "-e", "frame.time", 
-                "-e", "ip.src", 
-                "-e", "ip.dst", 
-                "-e", "frame.protocols", 
-                "-e", "frame.len", 
-                "-e", "tcp.srcport", 
-                "-e", "tcp.dstport",
-                "-e", "tcp.flags", 
-                "-e", "udp.srcport", 
-                "-e", "udp.dstport"
-            ], stdout=f, check=True)
-        print(f"pcap 檔案轉換完成，檔案儲存於：{text_file}")
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"pcap 檔案轉換失敗：{e}")
-        return False
+# 檢查並創建 attacker_ips ipset
+if ! sudo ipset list attacker_ips >/dev/null 2>&1; then
+    sudo ipset create attacker_ips hash:ip
+fi
+sudo ipset flush attacker_ips  # 清空現有 IP
 
-def analyze_traffic(text_file):
-    """使用 Gemini API 分析純文字檔案並回答問題。"""
-    with open(text_file, "r") as f:
-        text_data = f.read()
-    
-    prompt = f"""
-    根據以下的輸出，回答我以下3個問題，只需要回答我這三個問題，不需要回答其他解釋
-    1.是否為攻擊行為(ping請判定為攻擊行為)?(回答是/否)
-    2.是哪一種攻擊(若1為否則回答無攻擊)
-    3.攻擊者IP
-    {text_data}
-    """
-    try:
-        # 使用最新的 Gemini 1.5 Pro 模型
-        model = genai.GenerativeModel('models/gemini-1.5-pro-latest')
-        response = model.generate_content(prompt)
-        print(response.text)
-        return response.text
-    except Exception as e:
-        print(f"Gemini API 呼叫失敗：{e}")
-        return None
+# 設置 iptables 規則，檢測攻擊者
+sudo iptables -t nat -I PREROUTING 1 -p tcp --dport 5020 -m recent --set --name MODBUS_ATTACK
+sudo iptables -t nat -I PREROUTING 2 -p tcp --dport 5020 -m recent --update --seconds 10 --hitcount 5 --name MODBUS_ATTACK -j SET --add-set attacker_ips src
 
-def main():
-    interface = "ens33"  # 請替換為您的網路介面
-    duration = 10      # 監控時間（秒）
-    pcap_file = "/tmp/capture.pcap"
-    text_file = "/tmp/capture.txt"
-    
-    try:
-        if capture_traffic(interface, duration, pcap_file):
-            if pcap_to_text(pcap_file, text_file):
-                analyze_traffic(text_file)
-    finally:
-        try:
-            os.remove(pcap_file)
-            os.remove(text_file)
-        except OSError as e:
-            print(f"檔案刪除失敗: {e}")
+# 監控 ipset 攻擊者列表
+while true; do
+    ATTACKER_IPS=$(ipset list attacker_ips | grep -A 9999 "Members" | tail -n +2 | awk '{print $1}' | grep -v '^$')
 
-if __name__ == "__main__":
-    main()
+    # 針對每個攻擊者 IP 啟動 Conpot 蜜罐
+    if [ -n "$ATTACKER_IPS" ]; then
+        for IP in $ATTACKER_IPS; do
+            CONPOT_NAME="conpot_$IP"
+            CONPOT_NAME=$(echo "$CONPOT_NAME" | tr '.' '_')
+            BACKUP_PATH="$BACKUP_DIR/$CONPOT_NAME"
+
+            # 檢查是否已啟動對應的 Conpot 容器
+            if ! docker ps -a --format '{{.Names}}' | grep -q "^$CONPOT_NAME$"; then
+                echo "$(date) - 偵測到攻擊者 IP: $IP，啟動容器: $CONPOT_NAME" >> "$LOG_FILE"
+                mkdir -p "$BACKUP_PATH"
+
+                # 動態分配 5020 端口
+                PORT_5020=5020
+                while sudo ss -tuln | grep -q ":$PORT_5020 "; do
+                    PORT_5020=$((PORT_5020 + 1))
+                done
+
+                # 動態分配 161 端口 (UDP)
+                PORT_161=161
+                while sudo ss -tuln | grep -q ":$PORT_161 "; do
+                    PORT_161=$((PORT_161 + 1))
+                done
+
+                # 動態分配 20000 端口
+                PORT_20000=20000
+                while sudo ss -tuln | grep -q ":$PORT_20000 "; do
+                    PORT_20000=$((PORT_20000 + 1))
+                done
+
+                # 啟動容器
+                docker run --name "$CONPOT_NAME" \
+                    -v /home/bbrain/conpot_logs/new_machine:/var/log/conpot \
+                    -v "$BACKUP_PATH":/conpot/data \
+                    -p "$PORT_5020:5020" \
+                    -p "$PORT_161:161/udp" \
+                    -p "$PORT_20000:20000" \
+                    -d conpot_clean \
+                    /home/conpot/.local/bin/conpot \
+                    --template /home/conpot/.local/lib/python3.6/site-packages/conpot-0.6.0-py3.6.egg/conpot/templates/default/ \
+                    --config /home/conpot/.local/lib/python3.6/site-packages/conpot-0.6.0-py3.6.egg/conpot/conpot.cfg
+
+                if [ $? -eq 0 ]; then
+                    echo "$CONPOT_NAME" >> "$USED_NAMES_FILE"
+                    echo "$(date) - 容器 $CONPOT_NAME 成功啟動，端口: 5020->$PORT_5020, 161->$PORT_161, 20000->$PORT_20000" >> "$LOG_FILE"
+
+                    # 獲取容器 IP
+                    CONTAINER_IP=$(docker inspect -f '{{.NetworkSettings.IPAddress}}' "$CONPOT_NAME")
+
+                    # 設置 iptables 規則，將特定攻擊者 IP 的流量轉發至對應容器
+                    sudo iptables -t nat -A PREROUTING -s "$IP" -p tcp --dport 5020 -j DNAT --to-destination "$CONTAINER_IP:5020"
+                    sudo iptables -t nat -A PREROUTING -s "$IP" -p udp --dport 161 -j DNAT --to-destination "$CONTAINER_IP:161"
+                    sudo iptables -t nat -A PREROUTING -s "$IP" -p tcp --dport 20000 -j DNAT --to-destination "$CONTAINER_IP:20000"
+                else
+                    echo "$(date) - 啟動容器 $CONPOT_NAME 失敗" >> "$LOG_FILE"
+                fi
+            else
+                echo "$(date) - 容器 $CONPOT_NAME 已存在，跳過" >> "$LOG_FILE"
+            fi
+        done
+    fi
+    sleep 10
+done
