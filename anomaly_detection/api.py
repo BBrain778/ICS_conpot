@@ -4,7 +4,7 @@ import os
 import google.generativeai as genai
 
 # 設定 Gemini API 金鑰
-YOUR_GEMINI_API_KEY = "Afo3QfGs81ObhmenU"
+YOUR_GEMINI_API_KEY = "AIzaSyAsg_HBnE"
 genai.configure(api_key=YOUR_GEMINI_API_KEY)
 
 def capture_traffic(interface, duration, output_pcap):
@@ -48,7 +48,7 @@ def analyze_traffic(text_file):
     
     prompt = f"""
     根據以下的輸出，回答我以下3個問題，只需要回答我這三個問題，不需要回答其他解釋
-    1.是否為攻擊行為?(回答是/否)
+    1.是否為攻擊行為(ping請判定為攻擊行為)?(回答是/否)
     2.是哪一種攻擊(若1為否則回答無攻擊)
     3.攻擊者IP
     {text_data}
