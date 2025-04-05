@@ -50,7 +50,7 @@ def main():
     duration = 10        # 監控時間（秒）
 
     # 取得使用者目錄
-    user_dir = os.path.expanduser("~")
+    output_dir = "/home/bbrain/analyst"
     pcap_file = os.path.join(user_dir, "capture.pcap")
     text_file = os.path.join(user_dir, "capture.txt")
 
