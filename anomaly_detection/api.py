@@ -4,7 +4,7 @@ import os
 import google.generativeai as genai
 
 # 設定 Gemini API 金鑰
-YOUR_GEMINI_API_KEY = "AIzaSyAsg_HBnE"
+YOUR_GEMINI_API_KEY = "yAEHZq5lLvv0ZenU"
 genai.configure(api_key=YOUR_GEMINI_API_KEY)
 
 def capture_traffic(interface, duration, output_pcap):
@@ -33,7 +33,17 @@ def pcap_to_text(pcap_file, text_file):
                 "-e", "tcp.dstport",
                 "-e", "tcp.flags", 
                 "-e", "udp.srcport", 
-                "-e", "udp.dstport"
+                "-e", "udp.dstport",
+                "-e", "ip.proto",       # IP 協定
+                "-e", "tcp.stream",      # TCP 流編號
+                "-e", "udp.stream",      # UDP 流編號
+                "-e", "icmp.type",      # ICMP 類型
+                "-e", "icmp.code",       # ICMP 代碼
+                "-e", "tls.handshake.type", # TLS 握手類型
+                "-e", "tls.handshake.certificate", #TLS 憑證
+                "-e", "frame.comment", #封包註解
+                "-e", "tcp.options.timestamp.tsval", #tcp時間戳記值
+                "-e", "tcp.options.timestamp.tsecr" #tcp時間戳記回應
             ], stdout=f, check=True)
         print(f"pcap 檔案轉換完成，檔案儲存於：{text_file}")
         return True
