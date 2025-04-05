@@ -51,8 +51,8 @@ def main():
 
     # 取得使用者目錄
     output_dir = "/home/bbrain/analyst"
-    pcap_file = os.path.join(user_dir, "capture.pcap")
-    text_file = os.path.join(user_dir, "capture.txt")
+    pcap_file = os.path.join(output_dir, "capture.pcap")
+    text_file = os.path.join(output_dir, "capture.txt")
 
     if capture_traffic(interface, duration, pcap_file):
         pcap_to_text(pcap_file, text_file)
