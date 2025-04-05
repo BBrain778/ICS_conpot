@@ -14,46 +14,48 @@ def capture_traffic(interface, duration, output_pcap):
 def pcap_to_text(pcap_file, text_file):
     """將 pcap 檔案轉換為純文字檔案。"""
     try:
-        # 取得 pcap 檔案中的協定
-        protocols = subprocess.run(["tshark", "-r", pcap_file, "-T", "fields", "-e", "frame.protocols"], capture_output=True, text=True, check=True).stdout.strip().split("\n")
-        unique_protocols = set(proto.split(":")[-1] for proto in protocols) #將協定去重複
-        print(f"pcap檔案協定: {unique_protocols}")
-
-        # 根據協定選擇 tshark 欄位
-        tshark_fields = ["frame.number", "frame.time", "ip.src", "ip.dst", "frame.protocols", "frame.len", "tcp.srcport", "tcp.dstport", "tcp.flags", "udp.srcport", "udp.dstport", "frame.time_relative", "ip.proto"]
-        if "HTTP" in unique_protocols:
-            tshark_fields.extend(["http.request.method", "http.response.code"])
-        if "DNS" in unique_protocols:
-            tshark_fields.extend(["dns.qry.name", "dns.rsp.type"])
-        if "ICMP" in unique_protocols:
-            tshark_fields.extend(["icmp.type", "icmp.code"])
-        if "TLS" in unique_protocols:
-            tshark_fields.extend(["tls.handshake.type", "tls.handshake.certificate"])
-        tshark_fields.extend(["frame.cap_len" , "frame.interface_id", "frame.coloring_rule.name", "frame.comment", "tcp.options.timestamp.tsval", "tcp.options.timestamp.tsecr"])
-
-        # 執行 tshark 命令
         with open(text_file, 'w') as f:
-            tshark_command = ["tshark", "-r", pcap_file, "-T", "fields"] + ["-e", field for field in tshark_fields]
-            subprocess.run(tshark_command, stdout=f, check=True, stderr=subprocess.PIPE, text=True)
-
+            subprocess.run([
+                "tshark", "-r", pcap_file, "-T", "fields", 
+                "-e", "frame.number", 
+                "-e", "frame.time", 
+                "-e", "ip.src", 
+                "-e", "ip.dst", 
+                "-e", "frame.protocols", 
+                "-e", "frame.len", 
+                "-e", "tcp.srcport", 
+                "-e", "tcp.dstport",
+                "-e", "tcp.flags", 
+                "-e", "udp.srcport", 
+                "-e", "udp.dstport",
+                "-e", "ip.proto",   
+                "-e", "tcp.stream",     
+                "-e", "udp.stream",     
+                "-e", "icmp.type",   
+                "-e", "icmp.code",     
+                "-e", "tls.handshake.type", 
+                "-e", "tls.handshake.certificate", 
+                "-e", "frame.comment", 
+                "-e", "tcp.options.timestamp.tsval", 
+                "-e", "tcp.options.timestamp.tsecr"
+            ], stdout=f, check=True)
         print(f"pcap 檔案轉換完成，檔案儲存於：{text_file}")
         return True
     except subprocess.CalledProcessError as e:
         print(f"pcap 檔案轉換失敗：{e}")
-        print(f"tshark stderr: {e.stderr}")
         return False
 
 def main():
     interface = "ens33"  # 請替換為您的網路介面
-    duration = 10      # 監控時間（秒）
-    pcap_file = "/tmp/capture.pcap"
-    text_file = "/tmp/capture.txt"
+    duration = 10        # 監控時間（秒）
 
-    try:
-        if capture_traffic(interface, duration, pcap_file):
-            pcap_to_text(pcap_file, text_file)
-    except Exception as e:
-        print(f"發生錯誤: {e}")
+    # 取得使用者目錄
+    user_dir = os.path.expanduser("~")
+    pcap_file = os.path.join(user_dir, "capture.pcap")
+    text_file = os.path.join(user_dir, "capture.txt")
+
+    if capture_traffic(interface, duration, pcap_file):
+        pcap_to_text(pcap_file, text_file)
 
 if __name__ == "__main__":
     main()
