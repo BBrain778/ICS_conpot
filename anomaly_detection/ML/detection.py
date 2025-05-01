@@ -7,6 +7,7 @@ import pyshark
 import numpy as np
 from gensim.models import Word2Vec
 from sklearn.metrics.pairwise import cosine_similarity
+import subprocess
 
 # ———— 參數區 ————
 INTERFACE = "ens33"            # 網卡介面
@@ -87,11 +88,21 @@ def sliding_window_detect():
         # 4. 如果低於閾值，記錄最常出現的 IP
         if sim < SIMILARITY_THRESH:
             suspect_ip = Counter(src_ips).most_common(1)[0][0]
+            
+            # 記錄到惡意日誌
             with open(MALICIOUS_LOG, "a") as f:
                 f.write(f"{now.isoformat()} {suspect_ip} sim={sim:.3f}\n")
-            print(f"→ 偵測到惡意行為：{suspect_ip}")
+            
+            print(f"→ 偵測到惡意行為：{suspect_ip}，加入 ipset")
+
+            # 將 IP 加入 ipset（若已存在會顯示錯誤但繼續執行）
+            try:
+                subprocess.run(["sudo", "ipset", "add", "attacker_ips", suspect_ip], check=True)
+            except subprocess.CalledProcessError as e:
+                print(f"無法加入 ipset（可能已存在？）：{e}")
         else:
             print("→ 判定為正常")
+
 
 # ———— 主程式 ————
 if __name__ == "__main__":
