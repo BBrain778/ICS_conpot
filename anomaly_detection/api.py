@@ -2,9 +2,10 @@ import subprocess
 import time
 import os
 import google.generativeai as genai
+import re
 
 # 設定 Gemini API 金鑰
-YOUR_GEMINI_API_KEY = "IzaSyAU"
+YOUR_GEMINI_API_KEY = "lLvOfG0Zh" 
 genai.configure(api_key=YOUR_GEMINI_API_KEY)
 
 def capture_traffic(interface, duration, output_pcap):
@@ -52,7 +53,7 @@ def pcap_to_text(pcap_file, text_file):
         return False
 
 def analyze_traffic(text_file):
-    """使用 Gemini API 分析純文字檔案並回答問題。"""
+    """使用 Gemini API 分析純文字檔案並回答問題，同時將攻擊者 IP 加入 ipset。"""
     with open(text_file, "r") as f:
         text_data = f.read()
     
@@ -65,14 +66,31 @@ def analyze_traffic(text_file):
     {text_data}
     """
     try:
-        # 使用最新的 Gemini 1.5 Pro 模型
         model = genai.GenerativeModel('models/gemini-1.5-pro-latest')
         response = model.generate_content(prompt)
         print(response.text)
+
+        # 擷取答案
+        attack_detected = re.search(r"1\..*?(是|否)", response.text)
+        attacker_ip_match = re.search(r"3\..*?(\d{1,3}(?:\.\d{1,3}){3})", response.text)
+
+        if attack_detected and attacker_ip_match:
+            if attack_detected.group(1) == "是":
+                attacker_ip = attacker_ip_match.group(1)
+                print(f"發現攻擊者 IP：{attacker_ip}，加入 ipset 中...")
+                try:
+                    subprocess.run(["sudo", "ipset", "add", "attacker_ips", attacker_ip], check=True)
+                    print("已加入 ipset：attacker_ips")
+                except subprocess.CalledProcessError as e:
+                    print(f"加入 ipset 失敗：{e}")
+        else:
+            print("無法解析 Gemini 回傳格式")
+        
         return response.text
     except Exception as e:
         print(f"Gemini API 呼叫失敗：{e}")
         return None
+
 
 def main():
     interface = "ens33"  # 請替換為您的網路介面
@@ -93,3 +111,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
