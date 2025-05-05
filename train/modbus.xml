@@ -1,0 +1,76 @@
+<modbus enabled="True" host="0.0.0.0" port="502">
+    <device_info>
+        <VendorName>Siemens</VendorName>
+        <ProductCode>SIMATIC</ProductCode>
+        <MajorMinorRevision>S7-200</MajorMinorRevision>
+    </device_info>
+    <mode>serial</mode>
+    <delay>100</delay>
+    <slaves>
+        <slave id="255">
+            <blocks>
+                <block name="memoryModbusSlave255BlockA">
+                    <type>COILS</type>
+                    <starting_address>1</starting_address>
+                    <size>128</size>
+                    <content>memoryModbusSlave255BlockA</content>
+                </block>
+                <block name="memoryModbusSlave255BlockB">
+                    <type>DISCRETE_INPUTS</type>
+                    <starting_address>10001</starting_address>
+                    <size>32</size>
+                    <content>memoryModbusSlave255BlockB</content>
+                </block>
+            </blocks>
+        </slave>
+        
+        <!-- 速度 -->  
+        <slave id="2">
+            <blocks>
+                <block name="memoryModbusSlave2BlockC">
+                    <type>ANALOG_INPUTS</type>
+                    <starting_address>30001</starting_address>
+                    <size>8</size>
+                    <content>memoryModbusSlave2BlockC</content>
+                </block>
+                <block name="memoryModbusSpeedSensor">
+                    <type>HOLDING_REGISTERS</type>
+                    <starting_address>40001</starting_address> <!-- 修正為合理的地址範圍 -->
+                    <size>1</size>
+                    <content>memoryModbusSpeedSensor</content>
+                </block>
+            </blocks>
+        </slave>
+        <!-- 道岔 -->
+        <slave id="3">
+            <blocks>
+                <block name="turnout">
+                    <type>COILS</type>
+                    <starting_address>1</starting_address> 
+                    <size>1</size>
+                    <content>turnout</content>
+                </block>
+            </blocks>
+        </slave>
+        <slave id="4">
+            <blocks>
+                <block name="level_crossing">
+                    <type>COILS</type>
+                    <starting_address>1</starting_address> 
+                    <size>1</size>
+                    <content>turnout</content>
+                </block>
+            </blocks>
+        </slave>
+        <slave id="5">
+            <blocks>
+                <block name="traffic-light">
+                    <type>COILS</type>
+                    <starting_address>1</starting_address>
+                    <size>2</size>
+                    <content>memoryModbusSlave1BlockA</content>
+                </block>
+            </blocks>
+          </slave>
+    </slaves>
+</modbus>
